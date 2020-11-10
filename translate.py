@@ -55,6 +55,12 @@ def main(args):
                                               batch_sampler=BatchSampler(test_dataset, 9999999,
                                                                          args.batch_size, 1, 0, shuffle=False,
                                                                          seed=args.seed))
+    ############################333
+    #from os import path
+    #src_file=os.path.join(args.data, 'test.{:s}'.format(args.source_lang))
+    #print(len(test_loader),src_file)
+    #print(src_dict)
+    ###############################3
     # Build model and criterion
     model = models.build_model(args, src_dict, tgt_dict)
     if args.cuda:
@@ -63,10 +69,10 @@ def main(args):
     model.load_state_dict(state_dict['model'])
     logging.info('Loaded a model from checkpoint {:s}'.format(args.checkpoint_path))
     progress_bar = tqdm(test_loader, desc='| Generation', leave=False)
-
     # Iterate over the test set
     all_hyps = {}
     for i, sample in enumerate(progress_bar):
+        #print("xxxxxxxxxxxxxxxxxxxxxxxxxa")
         with torch.no_grad():
             # Compute the encoder output
             encoder_out = model.encoder(sample['src_tokens'], sample['src_lengths'])
