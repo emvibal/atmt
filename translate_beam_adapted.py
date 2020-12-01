@@ -33,6 +33,12 @@ def get_args():
     # Add length normalization argument
     parser.add_argument('--alpha', default=None, type=float, help='alpha value for length normalization')
 
+    # Add gamma for adapted beam search
+    parser.add_argument('--gamma', default=None, type=float, help='gamma value for adapted beam search')
+
+    # Set n for the n-best list
+    parser.add_argument('--nbest', default=1, type=int, help='n-value for n-best list')
+
     return parser.parse_args()
 
 
@@ -103,7 +109,9 @@ def main(args):
             # __QUESTION 2: Why do we keep one top candidate more than the beam size?
             # ANS: to anticipate the EOS token?
             log_probs, next_candidates = torch.topk(torch.log(torch.softmax(decoder_out, dim=2)),
-                                                    args.beam_size+1, dim=-1)
+                                                    #args.beam_size+1, dim=-1)
+            #log_probs, next_candidates = torch.topk(torch.log(torch.softmax(decoder_out, dim=2)),
+                                                    k=args.nbest+1, dim=-1)
 
             #print(log_probs)
             #print(next_candidates)
@@ -184,7 +192,6 @@ def main(args):
             #print(length_norm_results)
 
             # Create number of beam_size next nodes for every current node
-            # ---- i think I have to add length norm here?
             for i in range(log_probs.shape[0]):
                 for j in range(args.beam_size):
 
@@ -193,6 +200,7 @@ def main(args):
                     backoff_candidate = next_candidates[i, :, j+1]
                     best_log_p = log_probs[i, :, j]
                     backoff_log_p = log_probs[i, :, j+1]
+                    #print(backoff_log_p)
                     next_word = torch.where(best_candidate == tgt_dict.unk_idx, backoff_candidate, best_candidate)
                     log_p = torch.where(best_candidate == tgt_dict.unk_idx, backoff_log_p, best_log_p)
                     log_p = log_p[-1]
@@ -228,29 +236,38 @@ def main(args):
 
             # __QUESTION 5: What happens internally when we prune our beams?
             #ANS:We select the next n number of probabilities to follow for the next time step
-            #Qestions 5: How do we know we always maintain the best sequences?
+            #Question 5: How do we know we always maintain the best sequences?
             #ANS: we pick the top n most probable option
             for search in searches:
                 search.prune()
                 #print(searches)
 
         # Segment into sentences
+        # -- get top 3 search?
         best_sents = torch.stack([search.get_best()[1].sequence[1:].cpu() for search in searches])
+        #print(best_sents)
+        #print([search.get_best()[1].sequence[1:].cpu() for search in searches])
+        #exit()
         decoded_batch = best_sents.numpy()
 
         output_sentences = [decoded_batch[row, :] for row in range(decoded_batch.shape[0])]
 
         # __QUESTION 6: What is the purpose of this for loop?
         # ANS: This loop puts together all the sentences into  a list containing the whole predicted translation of the document
+        # -- get top 3 search?
         temp = list()
         for sent in output_sentences:
             first_eos = np.where(sent == tgt_dict.eos_idx)[0]
+            #second_eos = np.where(sent == tgt_dict.eos_idx)[1]
+            #third_eos = np.where(sent == tgt_dict.eos_idx)[2]
             if len(first_eos) > 0:
                 temp.append(sent[:first_eos[0]])
+                #temp.append(sent[:second_eos[0]])
+                #temp.append(sent[:third_eos[0]])
             else:
                 temp.append(sent)
         output_sentences = temp
-        #print(output_sentences)
+        print(output_sentences)
 
         # Convert arrays of indices into strings of words
         output_sentences = [tgt_dict.string(sent) for sent in output_sentences]
