@@ -85,6 +85,8 @@ def init_logging(args):
                         level=logging.INFO)
     logging.info('COMMAND: %s' % ' '.join(sys.argv))
     logging.info('Arguments: {}'.format(vars(args)))
+    #args.encoder_dropout_in=float(args.encoder_dropout_in)
+    #args.encoder_dropout_out=float(args.encoder_dropout_out)
 
 
 INCREMENTAL_STATE_INSTANCE_ID = defaultdict(lambda: 0)
