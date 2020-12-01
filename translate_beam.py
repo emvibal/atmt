@@ -86,8 +86,7 @@ def main(args):
             encoder_out = model.encoder(sample['src_tokens'], sample['src_lengths'])
             #print(encoder_out)
             # __QUESTION 1: What is "go_slice" used for and what do its dimensions represent?
-            # go_slice dimensions represent the number of EOS tokens per batch. 
-            # go_slice is used to mark ends of sentences
+
             go_slice = \
                 torch.ones(sample['src_tokens'].shape[0], 1).fill_(tgt_dict.eos_idx).type_as(sample['src_tokens'])
             #print(go_slice)
@@ -138,9 +137,7 @@ def main(args):
                 #exit()
                 #print(next_word)
                 # __QUESTION 3: Why do we add the node with a negative score?
-                # We add the node with a negative score in order to favor 
-                # shorter predictions over longer ones because adding negative 
-                # scores results to lower scores for longer sentences.
+
                 #normalizer = (((5+len(next_candidates))**args.alpha)) / ((5+1)**args.alpha)
 
                 #length_norm_results = log_probs/normalizer
@@ -203,12 +200,7 @@ def main(args):
                     search = node.search
 
                     # __QUESTION 4: How are "add" and "add_final" different? What would happen if we did not make this distinction?
-                    # ANS: It is important to make this distinction between "add" and "add_final"  because "add_final" indicates that it is the final node (because of EOS) and that nothing follows it
-                    # ANS :while the contrary is true for add where it can continue adding nodes after it. ??
-                    # ANS: if we don't make this distinction, there would not be a way to signal when the last node of the sentence has been generated
-                    # ANS: and a new sentence will be added to the previous one
-                    # ANS: By making this differentiation, we can also do length normalization on the predicted sentence one it is complete
-                    #       (i.e. an EOS token has been generated)
+
 
                     # Store the node as final if EOS is generated
                     if next_word[-1 ] == tgt_dict.eos_idx:
@@ -227,9 +219,8 @@ def main(args):
                         search.add(-node.eval(), node)
 
             # __QUESTION 5: What happens internally when we prune our beams?
-            #ANS:We select the next n number of probabilities to follow for the next time step
-            #Qestions 5: How do we know we always maintain the best sequences?
-            #ANS: we pick the top n most probable option
+            # How do we know we always maintain the best sequences?
+
             for search in searches:
                 search.prune()
                 #print(searches)
@@ -241,7 +232,6 @@ def main(args):
         output_sentences = [decoded_batch[row, :] for row in range(decoded_batch.shape[0])]
 
         # __QUESTION 6: What is the purpose of this for loop?
-        # ANS: This loop puts together all the sentences into  a list containing the whole predicted translation of the document
         temp = list()
         for sent in output_sentences:
             first_eos = np.where(sent == tgt_dict.eos_idx)[0]

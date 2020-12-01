@@ -79,6 +79,7 @@ def main(args):
 
     # Iterate over the test set
     all_hyps = {}
+    adapted_beam_nbest = []
     for i, sample in enumerate(progress_bar):
 
         # Create a beam search object or every input sentence in batch
@@ -92,8 +93,7 @@ def main(args):
             encoder_out = model.encoder(sample['src_tokens'], sample['src_lengths'])
             #print(encoder_out)
             # __QUESTION 1: What is "go_slice" used for and what do its dimensions represent?
-            # go_slice dimensions represent the number of EOS tokens per batch. 
-            # go_slice is used to mark ends of sentences
+
             go_slice = \
                 torch.ones(sample['src_tokens'].shape[0], 1).fill_(tgt_dict.eos_idx).type_as(sample['src_tokens'])
             #print(go_slice)
@@ -109,9 +109,9 @@ def main(args):
             # __QUESTION 2: Why do we keep one top candidate more than the beam size?
             # ANS: to anticipate the EOS token?
             log_probs, next_candidates = torch.topk(torch.log(torch.softmax(decoder_out, dim=2)),
-                                                    #args.beam_size+1, dim=-1)
+                                                    args.beam_size+1, dim=-1)
             #log_probs, next_candidates = torch.topk(torch.log(torch.softmax(decoder_out, dim=2)),
-                                                    k=args.nbest+1, dim=-1)
+                                                    #k=args.nbest+1, dim=-1)
 
             #print(log_probs)
             #print(next_candidates)
@@ -146,9 +146,7 @@ def main(args):
                 #exit()
                 #print(next_word)
                 # __QUESTION 3: Why do we add the node with a negative score?
-                # We add the node with a negative score in order to favor 
-                # shorter predictions over longer ones because adding negative 
-                # scores results to lower scores for longer sentences.
+
                 #normalizer = (((5+len(next_candidates))**args.alpha)) / ((5+1)**args.alpha)
 
                 #length_norm_results = log_probs/normalizer
@@ -211,12 +209,7 @@ def main(args):
                     search = node.search
 
                     # __QUESTION 4: How are "add" and "add_final" different? What would happen if we did not make this distinction?
-                    # ANS: It is important to make this distinction between "add" and "add_final"  because "add_final" indicates that it is the final node (because of EOS) and that nothing follows it
-                    # ANS :while the contrary is true for add where it can continue adding nodes after it. ??
-                    # ANS: if we don't make this distinction, there would not be a way to signal when the last node of the sentence has been generated
-                    # ANS: and a new sentence will be added to the previous one
-                    # ANS: By making this differentiation, we can also do length normalization on the predicted sentence one it is complete
-                    #       (i.e. an EOS token has been generated)
+
 
                     # Store the node as final if EOS is generated
                     if next_word[-1 ] == tgt_dict.eos_idx:
@@ -233,54 +226,60 @@ def main(args):
                                               node.final_cell, node.mask, torch.cat((prev_words[i][0].view([1]),
                                               next_word)), node.logp + log_p, node.length + 1)
                         search.add(-node.eval(), node)
+                        #search.add(-node.eval() * args.gamma, node)
 
             # __QUESTION 5: What happens internally when we prune our beams?
-            #ANS:We select the next n number of probabilities to follow for the next time step
             #Question 5: How do we know we always maintain the best sequences?
-            #ANS: we pick the top n most probable option
+
             for search in searches:
                 search.prune()
                 #print(searches)
 
         # Segment into sentences
-        # -- get top 3 search?
-        best_sents = torch.stack([search.get_best()[1].sequence[1:].cpu() for search in searches])
+        # -- get top n search?
+        #best_sents = torch.stack([search.get_best()[1].sequence[1:].cpu() for search in searches])
+        #print(search.get_best(args.nbest))
+        #n_best_sents = torch.stack([sent[1].sequence[1:].cpu() for search in searches for sent in search.get_best(args.nbest)])
+        n_best_sents = torch.stack([search.get_best()[1].sequence[1:].cpu()[:args.nbest] for search in searches])
+        #n_best_sents = torch.stack([search.get_best()[1].sequence[1:].cpu() for search in searches[:args.nbest]])
         #print(best_sents)
-        #print([search.get_best()[1].sequence[1:].cpu() for search in searches])
         #exit()
-        decoded_batch = best_sents.numpy()
+        decoded_batch = n_best_sents.numpy()
 
         output_sentences = [decoded_batch[row, :] for row in range(decoded_batch.shape[0])]
 
         # __QUESTION 6: What is the purpose of this for loop?
-        # ANS: This loop puts together all the sentences into  a list containing the whole predicted translation of the document
-        # -- get top 3 search?
         temp = list()
         for sent in output_sentences:
             first_eos = np.where(sent == tgt_dict.eos_idx)[0]
-            #second_eos = np.where(sent == tgt_dict.eos_idx)[1]
-            #third_eos = np.where(sent == tgt_dict.eos_idx)[2]
             if len(first_eos) > 0:
                 temp.append(sent[:first_eos[0]])
-                #temp.append(sent[:second_eos[0]])
-                #temp.append(sent[:third_eos[0]])
             else:
                 temp.append(sent)
         output_sentences = temp
-        print(output_sentences)
+        #print(output_sentences)
 
         # Convert arrays of indices into strings of words
         output_sentences = [tgt_dict.string(sent) for sent in output_sentences]
 
-        for ii, sent in enumerate(output_sentences):
-            all_hyps[int(sample['id'].data[ii])] = sent
+        if args.nbest > 1:
+            adapted_beam_nbest.extend(output_sentences)
+        else:
+            for ii, sent in enumerate(output_sentences):
+                all_hyps[int(sample['id'].data[ii])] = sent
+
+        #print(adapted_beam_nbest)
 
 
     # Write to file
     if args.output is not None:
         with open(args.output, 'w') as out_file:
-            for sent_id in range(len(all_hyps.keys())):
-                out_file.write(all_hyps[sent_id] + '\n')
+            if args.nbest > 1:
+                for sent in adapted_beam_nbest:
+                    out_file.write(sent + '\n')
+            else:
+                for sent_id in range(len(all_hyps.keys())):
+                    out_file.write(all_hyps[sent_id] + '\n')
 
 
 
